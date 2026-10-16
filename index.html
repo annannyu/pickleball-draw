@@ -59,9 +59,10 @@ button.sec{background:transparent;color:var(--ac)}
 </div>
 
 <script>
-var KEY="pickleball_v1";
+var KEY="pickleball_v2";
 var teams=[],draw=null;
-for(var i=0;i<8;i++)teams.push({name:"",level:""});
+var DEFAULTS=[["看來是你不隊",3],["躺平就隊",8],["有贏就好怎樣都隊",5],["小心, 贏我是你不隊",3],["總是叫不醒",4],["對對對對對隊",5],["李氏夫妻陪你玩個大的",7],["不小心贏你是我不隊",6]];
+for(var i=0;i<8;i++)teams.push({name:DEFAULTS[i][0],level:String(DEFAULTS[i][1])});
 
 try{
   var s=JSON.parse(localStorage.getItem(KEY)||"null");
