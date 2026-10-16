@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>匹克球抽籤對戰表</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4f7f4;--card:#fff;--tx:#1b2a20;--mut:#667a6d;--ac:#2e7d4f;--acx:#fff;--bd:#d9e1da;--hl:#fff3c4;--hlx:#5c4500}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#121814;--card:#1c251f;--tx:#e6efe8;--mut:#93a89a;--ac:#4caf78;--acx:#08150d;--bd:#31403580;--hl:#4a3f12;--hlx:#ffe58a}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#121814;--card:#1c251f;--tx:#e6efe8;--mut:#93a89a;--ac:#4caf78;--acx:#08150d;--bd:#314035;--hl:#4a3f12;--hlx:#ffe58a}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,"PingFang TC","Microsoft JhengHei",Arial,sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:14px}
+h1{font-size:22px;margin:6px 0 12px}
+h2{font-size:17px;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:14px}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.row .no{width:22px;color:var(--mut);text-align:right}
+input{font-size:16px;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);min-width:0}
+.nm{flex:1}
+.lv{width:78px}
+.t{color:var(--mut);font-weight:700}
+select{font-size:15px;padding:8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);max-width:100%}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+button{font-size:16px;padding:11px 16px;border-radius:10px;border:1px solid var(--ac);background:var(--ac);color:var(--acx);font-weight:700}
+button.sec{background:transparent;color:var(--ac)}
+.hint{font-size:13px;color:var(--mut);margin:6px 0 0}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.tm{padding:7px 9px;border:1px solid var(--bd);border-radius:8px;font-size:15px}
+.tm b{color:var(--ac);margin-right:4px}
+.match{border-top:1px solid var(--bd);padding:9px 0}
+.match:first-of-type{border-top:0}
+.vs{font-size:15px;line-height:1.5}
+.tag{font-weight:700;color:var(--ac)}
+.hc{margin-top:4px;display:inline-block;background:var(--hl);color:var(--hlx);border-radius:6px;padding:3px 8px;font-size:14px}
+.hc.none{background:transparent;color:var(--mut);padding-left:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🏓 匹克球抽籤對戰表</h1>
+
+<div class="card">
+<h2>1. 輸入 8 組隊伍與級別</h2>
+<div id="inputs"></div>
+<div class="row" style="margin-top:10px">
+<select id="dir">
+<option value="low">級別數字小 = 較強（T1 最強）</option>
+<option value="high">級別數字大 = 較強</option>
+</select>
+</div>
+<p class="hint">每差 1 個級別讓 1.5 分，例如 T7 對 T3 差 4 級，讓 6 分。較強的隊伍讓分給較弱的隊伍。</p>
+<div class="btns"><button id="draw">🎲 抽籤分組</button><button class="sec" id="clear">清除全部</button></div>
+</div>
+
+<div id="result"></div>
+</div>
+
+<script>
+var KEY="pickleball_v1";
+var teams=[],draw=null;
+for(var i=0;i<8;i++)teams.push({name:"",level:""});
+
+try{
+  var s=JSON.parse(localStorage.getItem(KEY)||"null");
+  if(s&&s.teams&&s.teams.length==8){teams=s.teams;draw=s.draw||null;if(s.dir)document.getElementById("dir").value=s.dir;}
+}catch(e){}
+
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify({teams:teams,draw:draw,dir:document.getElementById("dir").value}));}catch(e){}
+}
+function esc(t){var d=document.createElement("div");d.textContent=t;return d.innerHTML;}
+function tname(i){return teams[i].name.trim()||("隊伍"+(i+1));}
+function lvl(i){var v=parseFloat(teams[i].level);return isNaN(v)?null:v;}
+function lvlText(i){var v=lvl(i);return v===null?"未填級別":"T"+v;}
+
+function buildInputs(){
+  var h="";
+  for(var i=0;i<8;i++){
+    h+='<div class="row"><span class="no">'+(i+1)+'</span>'+
+    '<input class="nm" data-i="'+i+'" placeholder="隊名" value="'+esc(teams[i].name).replace(/"/g,"&quot;")+'">'+
+    '<span class="t">T</span><input class="lv" data-i="'+i+'" type="number" inputmode="decimal" min="0" step="any" placeholder="級別" value="'+esc(String(teams[i].level))+'"></div>';
+  }
+  document.getElementById("inputs").innerHTML=h;
+}
+
+function handicap(a,b){
+  var la=lvl(a),lb=lvl(b);
+  if(la===null||lb===null)return '<span class="hc none">請先輸入雙方級別</span>';
+  var diff=Math.abs(la-lb);
+  if(diff===0)return '<span class="hc none">同級，不讓分</span>';
+  var pts=diff*1.5;
+  var low=document.getElementById("dir").value==="low";
+  var aStronger=low?(la<lb):(la>lb);
+  var giver=aStronger?a:b,taker=aStronger?b:a;
+  return '<span class="hc">差 '+diff+' 級｜'+esc(tname(giver))+'（T'+lvl(giver)+'）讓 '+esc(tname(taker))+'（T'+lvl(taker)+'）'+pts+' 分</span>';
+}
+
+function render(){
+  var box=document.getElementById("result");
+  if(!draw){box.innerHTML="";return;}
+  var pairs=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],L="ABCD",h="";
+  for(var g=0;g<2;g++){
+    var ids=draw.slice(g*4,g*4+4);
+    h+='<div class="card"><h2>第 '+(g+1)+' 組</h2><div class="teams">';
+    for(var k=0;k<4;k++)h+='<div class="tm"><b>'+L[k]+'</b>'+esc(tname(ids[k]))+' <span class="t">'+lvlText(ids[k])+'</span></div>';
+    h+='</div>';
+    for(var p=0;p<pairs.length;p++){
+      var a=ids[pairs[p][0]],b=ids[pairs[p][1]];
+      h+='<div class="match"><div class="vs"><span class="tag">'+L[pairs[p][0]]+L[pairs[p][1]]+'</span>　'+
+      esc(tname(a))+' <span class="t">('+lvlText(a)+')</span> vs '+esc(tname(b))+' <span class="t">('+lvlText(b)+')</span></div>'+handicap(a,b)+'</div>';
+    }
+    h+='</div>';
+  }
+  box.innerHTML=h;
+}
+
+function doDraw(){
+  var idx=[0,1,2,3,4,5,6,7];
+  for(var i=7;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=idx[i];idx[i]=idx[j];idx[j]=t;}
+  draw=idx;save();render();
+  document.getElementById("result").scrollIntoView({behavior:"smooth"});
+}
+
+document.getElementById("inputs").addEventListener("input",function(e){
+  var el=e.target,i=el.getAttribute("data-i");
+  if(i===null)return;
+  if(el.classList.contains("nm"))teams[i].name=el.value;else teams[i].level=el.value;
+  save();render();
+});
+document.getElementById("dir").addEventListener("change",function(){save();render();});
+document.getElementById("draw").addEventListener("click",doDraw);
+document.getElementById("clear").addEventListener("click",function(){
+  if(!confirm("確定清除所有隊伍與抽籤結果？"))return;
+  for(var i=0;i<8;i++)teams[i]={name:"",level:""};
+  draw=null;save();buildInputs();render();
+});
+
+buildInputs();render();
+</script>
+</body>
+</html>
