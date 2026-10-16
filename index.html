@@ -34,6 +34,8 @@ button.sec{background:transparent;color:var(--ac)}
 .tag{font-weight:700;color:var(--ac)}
 .hc{margin-top:4px;display:inline-block;background:var(--hl);color:var(--hlx);border-radius:6px;padding:3px 8px;font-size:14px}
 .hc.none{background:transparent;color:var(--mut);padding-left:0}
+.sc{margin-top:5px;font-size:15px}
+.sc b{font-size:18px;color:var(--ac)}
 </style>
 </head>
 <body>
@@ -93,7 +95,9 @@ function handicap(a,b){
   var low=document.getElementById("dir").value==="low";
   var aStronger=low?(la<lb):(la>lb);
   var giver=aStronger?a:b,taker=aStronger?b:a;
-  return '<span class="hc">差 '+diff+' 級｜'+esc(tname(giver))+'（T'+lvl(giver)+'）讓 '+esc(tname(taker))+'（T'+lvl(taker)+'）'+pts+' 分</span>';
+  var need=Math.max(0,11-pts);
+  return '<span class="hc">差 '+diff+' 級｜'+esc(tname(giver))+'（T'+lvl(giver)+'）讓 '+esc(tname(taker))+'（T'+lvl(taker)+'）'+pts+' 分</span>'+
+  '<div class="sc">'+esc(tname(giver))+' <b>11</b> : <b>'+need+'</b> '+esc(tname(taker))+(pts>=11?'（讓分已達 11 分以上）':'')+'</div>';
 }
 
 function render(){
