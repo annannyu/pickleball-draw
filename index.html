@@ -36,6 +36,11 @@ button.sec{background:transparent;color:var(--ac)}
 .hc.none{background:transparent;color:var(--mut);padding-left:0}
 .sc{margin-top:5px;font-size:15px}
 .sc b{font-size:18px;color:var(--ac)}
+table.st{width:100%;border-collapse:collapse;font-size:14px}
+table.st th,table.st td{padding:5px 3px;text-align:center;border-bottom:1px solid var(--bd)}
+table.st tr.win td{background:var(--hl);color:var(--hlx);font-weight:700}
+.sr{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px;font-size:14px}
+.sci{width:60px;text-align:center;padding:7px}
 </style>
 </head>
 <body>
@@ -60,17 +65,18 @@ button.sec{background:transparent;color:var(--ac)}
 
 <script>
 var KEY="pickleball_v2";
-var teams=[],draw=null;
 var DEFAULTS=[["看來是你不隊",3],["躺平就隊",8],["有贏就好怎樣都隊",5],["小心, 贏我是你不隊",3],["總是叫不醒",4],["對對對對對隊",5],["李氏夫妻陪你玩個大的",7],["不小心贏你是我不隊",6]];
+var teams=[],draw=null,scores={};
+var PAIRS=[[0,1],[2,3],[0,2],[1,3],[0,3],[1,2]],L="ABCD";
 for(var i=0;i<8;i++)teams.push({name:DEFAULTS[i][0],level:String(DEFAULTS[i][1])});
 
 try{
   var s=JSON.parse(localStorage.getItem(KEY)||"null");
-  if(s&&s.teams&&s.teams.length==8){teams=s.teams;draw=s.draw||null;if(s.dir)document.getElementById("dir").value=s.dir;}
+  if(s&&s.teams&&s.teams.length==8){teams=s.teams;draw=s.draw||null;scores=s.scores||{};if(s.dir)document.getElementById("dir").value=s.dir;}
 }catch(e){}
 
 function save(){
-  try{localStorage.setItem(KEY,JSON.stringify({teams:teams,draw:draw,dir:document.getElementById("dir").value}));}catch(e){}
+  try{localStorage.setItem(KEY,JSON.stringify({teams:teams,draw:draw,scores:scores,dir:document.getElementById("dir").value}));}catch(e){}
 }
 function esc(t){var d=document.createElement("div");d.textContent=t;return d.innerHTML;}
 function tname(i){return teams[i].name.trim()||("隊伍"+(i+1));}
@@ -87,44 +93,106 @@ function buildInputs(){
   document.getElementById("inputs").innerHTML=h;
 }
 
-function handicap(a,b){
+function hcInfo(a,b){
   var la=lvl(a),lb=lvl(b);
-  if(la===null||lb===null)return '<span class="hc none">請先輸入雙方級別</span>';
+  if(la===null||lb===null)return null;
   var diff=Math.abs(la-lb);
-  if(diff===0)return '<span class="hc none">同級，不讓分</span>';
-  var pts=Math.round(diff*1.5);
+  if(diff===0)return{pts:0,diff:0};
   var low=document.getElementById("dir").value==="low";
-  var aStronger=low?(la<lb):(la>lb);
-  var giver=aStronger?a:b,taker=aStronger?b:a;
-  var need=Math.max(0,11-pts);
-  return '<span class="hc">差 '+diff+' 級｜'+esc(tname(giver))+'（T'+lvl(giver)+'）讓 '+esc(tname(taker))+'（T'+lvl(taker)+'）'+pts+' 分</span>'+
-  '<div class="sc">'+esc(tname(giver))+' <b>11</b> : <b>'+need+'</b> '+esc(tname(taker))+(pts>=11?'（讓分已達 11 分以上）':'')+'</div>';
+  var aS=low?(la<lb):(la>lb);
+  return{pts:Math.round(diff*1.5),diff:diff,giver:aS?a:b,taker:aS?b:a};
+}
+function handicap(a,b){
+  var o=hcInfo(a,b);
+  if(!o)return '<span class="hc none">請先輸入雙方級別</span>';
+  if(o.diff===0)return '<span class="hc none">同級，不讓分</span>';
+  var need=Math.max(0,11-o.pts),g=o.giver,t=o.taker;
+  return '<span class="hc">差 '+o.diff+' 級｜'+esc(tname(g))+'（T'+lvl(g)+'）讓 '+esc(tname(t))+'（T'+lvl(t)+'）'+o.pts+' 分</span>'+
+  '<div class="sc">'+esc(tname(g))+' <b>11</b> : <b>'+need+'</b> '+esc(tname(t))+(o.pts>=11?'（讓分已達 11 分以上）':'')+'</div>';
+}
+//讓分後的比分：讓分加到弱隊
+function adjScores(a,b,sa,sb){
+  var o=hcInfo(a,b),x=sa,y=sb;
+  if(o&&o.pts>0){if(o.taker===a)x+=o.pts;else y+=o.pts;}
+  return[x,y];
 }
 
+//同勝場數的隊伍排序：兩隊並列看對戰；三隊以上看淨分差、總得分
+function orderTied(arr,h){
+  if(arr.length==2){var w=h[arr[0].i+"-"+arr[1].i];if(w!==undefined)return w==arr[0].i?arr:[arr[1],arr[0]];}
+  return arr.slice().sort(function(x,y){return y.nd-x.nd||y.tp-x.tp;});
+}
+function calcGroup(g){
+  var ids=draw.slice(g*4,g*4+4),st=[],h={},done=0,warn=false,i;
+  for(i=0;i<4;i++)st.push({i:i,w:0,l:0,pf:0,pa:0});
+  for(var p=0;p<6;p++){
+    var x=PAIRS[p][0],y=PAIRS[p][1],v=scores[g+"-"+L[x]+L[y]];
+    if(!v||v[0]===""||v[1]===""||v[0]===undefined||v[1]===undefined)continue;
+    var sa=parseFloat(v[0]),sb=parseFloat(v[1]);
+    if(isNaN(sa)||isNaN(sb))continue;
+    var ad=adjScores(ids[x],ids[y],sa,sb);
+    if(ad[0]===ad[1]){warn=true;continue;}
+    var wi=ad[0]>ad[1]?x:y,lo=wi===x?y:x;
+    st[x].pf+=ad[0];st[x].pa+=ad[1];st[y].pf+=ad[1];st[y].pa+=ad[0];
+    st[wi].w++;st[lo].l++;h[x+"-"+y]=wi;h[y+"-"+x]=wi;done++;
+  }
+  var byW={};
+  st.forEach(function(t){t.nd=t.pf-t.pa;t.tp=t.pf;(byW[t.w]=byW[t.w]||[]).push(t);});
+  var order=[];
+  Object.keys(byW).map(Number).sort(function(a,b){return b-a;}).forEach(function(w){order=order.concat(orderTied(byW[w],h));});
+  var tie=false,a1=order[0],a2=order[1];
+  if(a2.w===a1.w){
+    var decided=byW[a1.w].length==2&&h[a1.i+"-"+a2.i]!==undefined;
+    if(!decided&&a1.nd===a2.nd&&a1.tp===a2.tp)tie=true;
+  }
+  return{ids:ids,order:order,done:done,tie:tie,warn:warn};
+}
+function renderStandings(){
+  if(!draw)return;
+  for(var g=0;g<2;g++){
+    var el=document.getElementById("st"+g);if(!el)continue;
+    var r=calcGroup(g);
+    if(r.done===0&&!r.warn){el.innerHTML='<p class="hint">輸入比分後，這裡會顯示排名。</p>';continue;}
+    var h='<table class="st"><tr><th>名次</th><th>隊伍</th><th>勝</th><th>敗</th><th>淨分差</th><th>總得分</th></tr>';
+    for(var k=0;k<4;k++){
+      var s=r.order[k],win=(k===0&&r.done===6&&!r.tie);
+      h+='<tr'+(win?' class="win"':'')+'><td>'+(k+1)+'</td><td style="text-align:left">'+(win?'🏆 ':'')+esc(tname(r.ids[s.i]))+'</td><td>'+s.w+'</td><td>'+s.l+'</td><td>'+(s.nd>0?'+':'')+s.nd+'</td><td>'+s.tp+'</td></tr>';
+    }
+    h+='</table>';
+    var msg=r.done<6?'已完成 '+r.done+'/6 場，目前為暫時排名。':(r.tie?'⚠️ 第一名完全平手，請加賽一場或抽籤決定。':'🏆 晉級：'+esc(tname(r.ids[r.order[0].i])));
+    if(r.warn)msg+=' ⚠️ 有場次讓分後比分相同，請確認輸入。';
+    el.innerHTML=h+'<p class="hint">'+msg+'</p>';
+  }
+}
+
+function sval(k,s){return scores[k]&&scores[k][s]!==undefined?esc(String(scores[k][s])):"";}
 function render(){
   var box=document.getElementById("result");
   if(!draw){box.innerHTML="";return;}
-  var pairs=[[0,1],[2,3],[0,2],[1,3],[0,3],[1,2]],L="ABCD",h="",gm=[[],[]];
+  var h="",gm=[[],[]];
   for(var g=0;g<2;g++){
     var ids=draw.slice(g*4,g*4+4);
-    h+='<div class="card"><h2>第 '+(g+1)+' 組</h2><div class="teams">';
+    h+='<div class="card"><h2>第 '+(g+1)+' 組（取第 1 名晉級）</h2><div class="teams">';
     for(var k=0;k<4;k++)h+='<div class="tm"><b>'+L[k]+'</b>'+esc(tname(ids[k]))+' <span class="t">'+lvlText(ids[k])+'</span></div>';
-    h+='</div></div>';
-    for(var p=0;p<pairs.length;p++)gm[g].push({g:g,code:L[pairs[p][0]]+L[pairs[p][1]],a:ids[pairs[p][0]],b:ids[pairs[p][1]]});
+    h+='</div><div id="st'+g+'"></div></div>';
+    for(var p=0;p<6;p++)gm[g].push({g:g,code:L[PAIRS[p][0]]+L[PAIRS[p][1]],a:ids[PAIRS[p][0]],b:ids[PAIRS[p][1]]});
   }
-  h+='<div class="card"><h2>賽程順序（共 12 場）</h2><p class="hint" style="margin:0 0 6px">兩組輪流出賽，每隊都不會連續打兩場。</p>';
+  h+='<div class="card"><h2>賽程順序（共 12 場）</h2><p class="hint" style="margin:0 0 6px">兩組輪流出賽，每隊都不會連續打兩場。比分請輸入場上實際得分，讓分由系統自動加給弱隊。</p>';
   for(var n=0;n<12;n++){
-    var m=gm[n%2][Math.floor(n/2)];
-    h+='<div class="match"><div class="vs"><span class="tag">第 '+(n+1)+' 場｜第 '+(m.g+1)+' 組 '+m.code+'</span><br>'+esc(tname(m.a))+' <span class="t">('+lvlText(m.a)+')</span> vs '+esc(tname(m.b))+' <span class="t">('+lvlText(m.b)+')</span></div>'+handicap(m.a,m.b)+'</div>';
+    var m=gm[n%2][Math.floor(n/2)],key=m.g+"-"+m.code;
+    h+='<div class="match"><div class="vs"><span class="tag">第 '+(n+1)+' 場｜第 '+(m.g+1)+' 組 '+m.code+'</span><br>'+esc(tname(m.a))+' <span class="t">('+lvlText(m.a)+')</span> vs '+esc(tname(m.b))+' <span class="t">('+lvlText(m.b)+')</span></div>'+handicap(m.a,m.b)+
+    '<div class="sr"><span>'+esc(tname(m.a))+'</span><input class="sci" type="number" inputmode="numeric" min="0" data-k="'+key+'" data-s="0" value="'+sval(key,0)+'"> : <input class="sci" type="number" inputmode="numeric" min="0" data-k="'+key+'" data-s="1" value="'+sval(key,1)+'"><span>'+esc(tname(m.b))+'</span></div></div>';
   }
   h+='</div>';
   box.innerHTML=h;
+  renderStandings();
 }
 
 function doDraw(){
+  if(Object.keys(scores).length&&!confirm("重新抽籤會清除已輸入的比分，確定嗎？"))return;
   var idx=[0,1,2,3,4,5,6,7];
   for(var i=7;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=idx[i];idx[i]=idx[j];idx[j]=t;}
-  draw=idx;save();render();
+  draw=idx;scores={};save();render();
   document.getElementById("result").scrollIntoView({behavior:"smooth"});
 }
 
@@ -134,12 +202,19 @@ document.getElementById("inputs").addEventListener("input",function(e){
   if(el.classList.contains("nm"))teams[i].name=el.value;else teams[i].level=el.value;
   save();render();
 });
+document.getElementById("result").addEventListener("input",function(e){
+  var el=e.target;
+  if(!el.classList.contains("sci"))return;
+  var k=el.getAttribute("data-k"),s=Number(el.getAttribute("data-s"));
+  scores[k]=scores[k]||["",""];scores[k][s]=el.value;
+  save();renderStandings();
+});
 document.getElementById("dir").addEventListener("change",function(){save();render();});
 document.getElementById("draw").addEventListener("click",doDraw);
 document.getElementById("clear").addEventListener("click",function(){
-  if(!confirm("確定清除所有隊伍與抽籤結果？"))return;
+  if(!confirm("確定清除所有隊伍、抽籤結果與比分？"))return;
   for(var i=0;i<8;i++)teams[i]={name:"",level:""};
-  draw=null;save();buildInputs();render();
+  draw=null;scores={};save();buildInputs();render();
 });
 
 buildInputs();render();
